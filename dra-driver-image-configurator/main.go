@@ -24,8 +24,13 @@ func main() {
 	ctrl.SetLogger(zap.New())
 	log := ctrl.Log.WithName("setup")
 
+	nodeName := os.Getenv("NODE_NAME")
+	if nodeName == "" {
+		log.Error(fmt.Errorf("NODE_NAME env var must be set"), "")
+		os.Exit(1)
+	}
+
 	// Start the DRA ResourceSlice controller before manager
-	config := ctrl.GetConfigOrDie()
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "unable to create kubeClient: %v\n", err)
@@ -47,13 +52,11 @@ func main() {
 	}
 
 	mgr, err := ctrl.NewManager(config, ctrl.Options{
-		LeaderElection:   true,
-		LeaderElectionID: DriverName,
 		Cache: cache.Options{
 			ByObject: map[client.Object]cache.ByObject{
-				// Cache only pods that the scheduler has nominated to a node.
+				// Cache only pods nominated to this node.
 				&corev1.Pod{}: {
-					Field: fields.OneTermNotEqualSelector("status.nominatedNodeName", ""),
+					Field: fields.SelectorFromSet(fields.Set{"status.nominatedNodeName": nodeName}),
 				},
 			},
 		},
@@ -70,7 +73,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	log.Info("starting manager")
+	log.Info("starting manager", "node", nodeName)
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		log.Error(err, "manager exited")
 		os.Exit(1)
