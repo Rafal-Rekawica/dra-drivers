@@ -1,0 +1,63 @@
+# ValidatingAdmissionPolicy for ResourceClaim
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: image-configurator-resourceclaim
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["resource.k8s.io"]
+        apiVersions: ["v1"]
+        resources: ["resourceclaims"]
+        operations: ["CREATE", "UPDATE"]
+  validations:
+    - expression: |
+        object.spec.devices.config.all(cfg,
+          !has(cfg.opaque) ||
+          cfg.opaque.driver != "image-configurator.x-k8s.io" ||
+          (has(cfg.opaque.parameters.containerName) &&
+           cfg.opaque.parameters.containerName != "" &&
+           has(cfg.opaque.parameters.image) &&
+           cfg.opaque.parameters.image != ""))
+      message: "ImageConfig must have non-empty containerName and image"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: image-configurator-resourceclaim
+spec:
+  policyName: image-configurator-resourceclaim
+  validationActions: [Deny]
+---
+# ValidatingAdmissionPolicy for ResourceClaimTemplate
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: image-configurator-resourceclaimtemplate
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["resource.k8s.io"]
+        apiVersions: ["v1"]
+        resources: ["resourceclaimtemplates"]
+        operations: ["CREATE", "UPDATE"]
+  validations:
+    - expression: |
+        object.spec.spec.devices.config.all(cfg,
+          !has(cfg.opaque) ||
+          cfg.opaque.driver != "image-configurator.x-k8s.io" ||
+          (has(cfg.opaque.parameters.containerName) &&
+           cfg.opaque.parameters.containerName != "" &&
+           has(cfg.opaque.parameters.image) &&
+           cfg.opaque.parameters.image != ""))
+      message: "ImageConfig must have non-empty containerName and image"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: image-configurator-resourceclaimtemplate
+spec:
+  policyName: image-configurator-resourceclaimtemplate
+  validationActions: [Deny]
