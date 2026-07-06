@@ -12,8 +12,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	controller "github.com/gke-labs/dra-drivers/dra-driver-image-configurator/internal/controller"
+	webhookvalidation "github.com/gke-labs/dra-drivers/dra-driver-image-configurator/internal/webhook"
 	"k8s.io/client-go/kubernetes"
 	resourceslice "k8s.io/dynamic-resource-allocation/resourceslice"
 )
@@ -24,13 +26,8 @@ func main() {
 	ctrl.SetLogger(zap.New())
 	log := ctrl.Log.WithName("setup")
 
-	nodeName := os.Getenv("NODE_NAME")
-	if nodeName == "" {
-		log.Error(fmt.Errorf("NODE_NAME env var must be set"), "")
-		os.Exit(1)
-	}
-
 	// Start the DRA ResourceSlice controller before manager
+	config := ctrl.GetConfigOrDie()
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "unable to create kubeClient: %v\n", err)
@@ -52,11 +49,13 @@ func main() {
 	}
 
 	mgr, err := ctrl.NewManager(config, ctrl.Options{
+		LeaderElection:   true,
+		LeaderElectionID: DriverName,
 		Cache: cache.Options{
 			ByObject: map[client.Object]cache.ByObject{
-				// Cache only pods nominated to this node.
+				// Cache only pods that the scheduler has nominated to a node.
 				&corev1.Pod{}: {
-					Field: fields.SelectorFromSet(fields.Set{"status.nominatedNodeName": nodeName}),
+					Field: fields.OneTermNotEqualSelector("status.nominatedNodeName", ""),
 				},
 			},
 		},
@@ -73,7 +72,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	log.Info("starting manager", "node", nodeName)
+	// Register the validating admission webhooks on the manager's webhook
+	// server. The server runs as a manager runnable (its own goroutine) in the
+	// same process as the controller.
+	webhookServer := mgr.GetWebhookServer()
+	webhookServer.Register("/validate-resourceclaim", &admission.Webhook{
+		Handler: &webhookvalidation.ResourceClaimValidator{},
+	})
+	webhookServer.Register("/validate-resourceclaimtemplate", &admission.Webhook{
+		Handler: &webhookvalidation.ResourceClaimTemplateValidator{},
+	})
+
+	log.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		log.Error(err, "manager exited")
 		os.Exit(1)

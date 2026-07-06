@@ -87,3 +87,14 @@ spec:
         - name: controller
           image: registry.k8s.io/dra-driver-image-configurator:latest
           imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9443
+              name: https
+          volumeMounts:
+            - name: webhook-tls
+              mountPath: /tmp/k8s-webhook-server/serving-certs
+              readOnly: true
+      volumes:
+        - name: webhook-tls
+          secret:
+            secretName: dra-driver-image-configurator-webhook-tls
