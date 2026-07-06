@@ -13,6 +13,7 @@ spec:
         operations: ["CREATE", "UPDATE"]
   validations:
     - expression: |
+        !has(object.spec.devices.config) ||
         object.spec.devices.config.all(cfg,
           !has(cfg.opaque) ||
           cfg.opaque.driver != "image-configurator.x-k8s.io" ||
@@ -45,6 +46,7 @@ spec:
         operations: ["CREATE", "UPDATE"]
   validations:
     - expression: |
+        !has(object.spec.spec.devices.config) ||
         object.spec.spec.devices.config.all(cfg,
           !has(cfg.opaque) ||
           cfg.opaque.driver != "image-configurator.x-k8s.io" ||
