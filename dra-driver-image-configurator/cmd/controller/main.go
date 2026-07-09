@@ -12,10 +12,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	controller "github.com/gke-labs/dra-drivers/dra-driver-image-configurator/internal/controller"
-	webhookvalidation "github.com/gke-labs/dra-drivers/dra-driver-image-configurator/internal/webhook"
 	"k8s.io/client-go/kubernetes"
 	resourceslice "k8s.io/dynamic-resource-allocation/resourceslice"
 )
@@ -71,17 +69,6 @@ func main() {
 		log.Error(err, "unable to create controller")
 		os.Exit(1)
 	}
-
-	// Register the validating admission webhooks on the manager's webhook
-	// server. The server runs as a manager runnable (its own goroutine) in the
-	// same process as the controller.
-	webhookServer := mgr.GetWebhookServer()
-	webhookServer.Register("/validate-resourceclaim", &admission.Webhook{
-		Handler: &webhookvalidation.ResourceClaimValidator{},
-	})
-	webhookServer.Register("/validate-resourceclaimtemplate", &admission.Webhook{
-		Handler: &webhookvalidation.ResourceClaimTemplateValidator{},
-	})
 
 	log.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
