@@ -887,7 +887,7 @@ func TestReconcile_APIErrors(t *testing.T) {
 	claimName := "reconcile-claim"
 	pod := newPod(NameRef{Name: "reconcile-pod", Namespace: "test-ns"},
 		withContainer(ImageRef{ContainerName: "target-container", Image: "old-image:v1"}),
-		withClaimRef(claimName),
+		withGeneratedClaimRef(claimName),
 	)
 	claim := newClaim(NameRef{Name: claimName, Namespace: "test-ns"},
 		withImageConfig(t, ImageRef{
