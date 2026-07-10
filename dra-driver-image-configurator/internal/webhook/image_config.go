@@ -6,14 +6,11 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/distribution/reference"
 	resourceapi "k8s.io/api/resource/v1"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	imagev1alpha1 "github.com/gke-labs/dra-drivers/dra-driver-image-configurator/api/v1alpha1"
 )
-
-const driverName = "image-configurator.x-k8s.io"
 
 type ResourceClaimValidator struct{}
 
@@ -45,27 +42,31 @@ func (v *ResourceClaimTemplateValidator) Handle(ctx context.Context, req admissi
 // for DeviceClaimConfiguration entries targeting image-configurator.x-k8s.io.
 // Configs from other drivers are silently skipped.
 func validateClaimConfigs(configs []resourceapi.DeviceClaimConfiguration) error {
-	decoder := imagev1alpha1.Codec.UniversalDeserializer()
+	_, err := extractImageConfigs(configs)
+	return err
+}
+
+// extractImageConfigs decodes and validates all ImageConfigs from the given
+// device claim configs that target image-configurator.x-k8s.io. Configs from
+// other drivers are silently skipped. It returns an error on decode failure
+// (V-3) or on an invalid or incomplete ImageConfig (V-1, V-4).
+func extractImageConfigs(configs []resourceapi.DeviceClaimConfiguration) ([]*imagev1alpha1.ImageConfig, error) {
+	var imageConfigs []*imagev1alpha1.ImageConfig
 	for _, cfg := range configs {
-		if cfg.Opaque == nil || cfg.Opaque.Driver != driverName {
+		if cfg.Opaque == nil || cfg.Opaque.Driver != imagev1alpha1.DriverName {
 			continue
 		}
 		if cfg.Opaque.Parameters.Raw == nil {
 			continue
 		}
-		obj, _, err := decoder.Decode(cfg.Opaque.Parameters.Raw, nil, nil)
+		ic, err := imagev1alpha1.DecodeImageConfig(cfg.Opaque.Parameters.Raw)
 		if err != nil {
-			return fmt.Errorf("failed to decode ImageConfig parameters: %w", err)
+			return nil, err
 		}
-		ic, ok := obj.(*imagev1alpha1.ImageConfig)
-		if !ok {
-			return fmt.Errorf("unexpected type in ImageConfig parameters: %T", obj)
+		if err := ic.Validate(); err != nil {
+			return nil, err
 		}
-		if ic.Image != "" {
-			if _, err := reference.ParseNormalizedNamed(ic.Image); err != nil {
-				return fmt.Errorf("invalid image reference %q: %w", ic.Image, err)
-			}
-		}
+		imageConfigs = append(imageConfigs, ic)
 	}
-	return nil
+	return imageConfigs, nil
 }

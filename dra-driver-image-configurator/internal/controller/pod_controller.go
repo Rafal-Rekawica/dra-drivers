@@ -13,7 +13,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	"github.com/distribution/reference"
 	imagev1alpha1 "github.com/gke-labs/dra-drivers/dra-driver-image-configurator/api/v1alpha1"
 )
 
@@ -148,7 +147,6 @@ func collectPendingBindingResults(claims []*resourceapi.ResourceClaim) []claimBi
 // collectImageConfigs extracts all ImageConfig objects from the allocated device
 // configs across all claims.
 func collectImageConfigs(claims []*resourceapi.ResourceClaim) ([]*imagev1alpha1.ImageConfig, error) {
-	decoder := imagev1alpha1.Codec.UniversalDeserializer()
 	var imageConfigs []*imagev1alpha1.ImageConfig
 	imageMap := make(map[string]string)
 	for _, claim := range claims {
@@ -156,16 +154,12 @@ func collectImageConfigs(claims []*resourceapi.ResourceClaim) ([]*imagev1alpha1.
 			if cfg.Opaque == nil || cfg.Opaque.Parameters.Raw == nil {
 				continue
 			}
-			obj, _, err := decoder.Decode(cfg.Opaque.Parameters.Raw, nil, nil)
+			ic, err := imagev1alpha1.DecodeImageConfig(cfg.Opaque.Parameters.Raw)
 			if err != nil {
 				return nil, reconcile.TerminalError(fmt.Errorf("Opaque parameter decode failure: %w", err))
 			}
-			ic, ok := obj.(*imagev1alpha1.ImageConfig)
-			if !ok || ic.ContainerName == "" || ic.Image == "" {
-				return nil, reconcile.TerminalError(fmt.Errorf("ContainerName or Image empty"))
-			}
-			if _, err := reference.ParseNormalizedNamed(ic.Image); err != nil {
-				return nil, reconcile.TerminalError(fmt.Errorf("invalid image reference %q in claim %s/%s: %w", ic.Image, claim.Namespace, claim.Name, err))
+			if err := ic.Validate(); err != nil {
+				return nil, reconcile.TerminalError(fmt.Errorf("%w in claim %s/%s", err, claim.Namespace, claim.Name))
 			}
 			if image, conflict := imageMap[ic.ContainerName]; conflict && image != ic.Image {
 				return nil, reconcile.TerminalError(fmt.Errorf("conflicting ImageConfigs for container %q: %q vs %q", ic.ContainerName, image, ic.Image))

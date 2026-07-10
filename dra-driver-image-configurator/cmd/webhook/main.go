@@ -4,6 +4,7 @@ import (
 	"os"
 
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -28,12 +29,24 @@ func main() {
 		os.Exit(1)
 	}
 
+	// The Pod validator performs direct (uncached) reads of ResourceClaims and
+	// ResourceClaimTemplates so that admission decisions reflect the current
+	// API state without starting informers.
+	apiReader, err := client.New(mgr.GetConfig(), client.Options{Scheme: mgr.GetScheme()})
+	if err != nil {
+		log.Error(err, "unable to create API reader")
+		os.Exit(1)
+	}
+
 	webhookServer := mgr.GetWebhookServer()
 	webhookServer.Register("/validate-resourceclaim", &admission.Webhook{
 		Handler: &webhookvalidation.ResourceClaimValidator{},
 	})
 	webhookServer.Register("/validate-resourceclaimtemplate", &admission.Webhook{
 		Handler: &webhookvalidation.ResourceClaimTemplateValidator{},
+	})
+	webhookServer.Register("/validate-pod", &admission.Webhook{
+		Handler: &webhookvalidation.PodValidator{Reader: apiReader},
 	})
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

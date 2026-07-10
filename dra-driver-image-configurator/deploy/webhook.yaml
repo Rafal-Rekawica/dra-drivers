@@ -104,3 +104,22 @@ webhooks:
         name: dra-driver-image-configurator-webhook
         namespace: kube-system
         path: /validate-resourceclaimtemplate
+  - name: pod.image-configurator.x-k8s.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: Fail
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values: ["kube-system"]
+    rules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        resources: ["pods"]
+        operations: ["CREATE"]
+    clientConfig:
+      service:
+        name: dra-driver-image-configurator-webhook
+        namespace: kube-system
+        path: /validate-pod
